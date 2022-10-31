@@ -1,0 +1,66 @@
+import { Slider, GroupBox, HorizontalBox, VerticalBox, Button } from "std-widgets.slint";
+
+export Button := Rectangle {
+    property text <=> txt.text;
+    callback clicked <=> touch.clicked;
+    //border-radius: height / 2;
+    border-width: 1px;
+    border-color: background.darker(25%);
+    background: touch.pressed ? #6b8282 : touch.has-hover ? #6c616c :  #456;
+    height: txt.preferred-height * 1.33;
+    min-width: txt.preferred-width + 20px;
+    txt := Text {
+        font-size: 20px;
+        x: (parent.width - width)/2 + (touch.pressed ? 2px : 0);
+        y: (parent.height - height)/2 + (touch.pressed ? 1px : 0);
+        color: touch.pressed ? #fff : #eee;
+    }
+    touch := TouchArea { }
+}
+
+export MainWindow := Window {
+    title: "Slint threading template";
+    preferred-width: 800px;
+    preferred-height: 600px;
+    
+    callback start_clicked();
+    property <image> new_image;
+    
+    VerticalBox {
+        Text {
+            font-size: 20px;
+            text: " Test Threading";
+            horizontal-alignment: center;
+        }
+        
+        Rectangle {
+            border-width: 4px;
+            border-color: black;
+            border-radius: 0px;
+            clip: true;
+            VerticalLayout {
+                Image {
+                    source: new_image;
+                    image-fit: fill;
+                    image-rendering: smooth;
+                }
+            }
+        }
+        
+        HorizontalBox {
+            Button {
+                text: "START";
+                height: 50px;
+                background: green;
+                clicked => {
+                    start_clicked();
+                }
+            }
+           Button {
+                text: "STOP";
+                height: 50px;
+                background: red;
+            }
+        }
+    }
+}
