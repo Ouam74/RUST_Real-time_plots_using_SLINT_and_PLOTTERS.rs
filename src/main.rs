@@ -1,5 +1,6 @@
-use std::thread;
-use std::time;
+use std::{thread, time};
+use std::sync::mpsc::{self, channel, sync_channel, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Mutex};
 use rand::Rng;
 use plotters::prelude::*;
 use slint::SharedPixelBuffer;
@@ -8,13 +9,7 @@ slint::slint! {
     import { MainWindow } from "src/Thread3.slint";
 }
 
-// #[cfg(target_arch = "wasm32")]
-// use wasm_bindgen::prelude::*;
-
-// #[cfg(target_arch = "wasm32")]
-// mod wasm_backend;
-
-static _N: i64 = 10000;
+static _N: i64 = 1000;
 
 fn createserie_iter() -> Vec<(f64, f64)> {
     let mut ret = vec![];
@@ -58,27 +53,51 @@ fn render_plot() -> slint::Image {
 
 
 pub fn main() {
-    // #[cfg(all(debug_assertions, target_arch = "wasm32"))]
+    
     let ui = MainWindow::new();
     let ui_handle = ui.as_weak();
-
+    let abort = Arc::new(Mutex::new(0)); 
+    
+    let abort_clone = abort.clone(); 
     ui.on_start_clicked({
         move || {
-            println!("test");
+            println!("START");
+            println!("{:}", abort_clone.lock().unwrap());
             let ui = ui_handle.unwrap();
             let ui_handle = ui.as_weak();
-
+            
+            let abort_clone = abort_clone.clone(); 
             std::thread::spawn(move || {
                 // ... Do some computation in the thread
-                for i in 0..1000 {
-                    thread::sleep(time::Duration::from_micros(1000));
-                    // now forward the data to the main thread using invoke_from_event_loop
-                    let handle_copy = ui_handle.clone();
-                    slint::invoke_from_event_loop(move || {
-                        handle_copy.unwrap().set_new_image(render_plot());
-                    });
+                for _ in 0..100 {
+                    if *abort_clone.lock().unwrap() == 0 {
+                        thread::sleep(time::Duration::from_millis(100));
+                        // now forward the data to the main thread using invoke_from_event_loop
+                        let handle_copy = ui_handle.clone();
+                        slint::invoke_from_event_loop(move || {
+                            handle_copy.unwrap().set_start_status(true);
+                            handle_copy.unwrap().set_new_image(render_plot());
+                        });
+                    }
+                    else {
+                        println!("out");
+                        break;
+                    };
                 };
+                let handle_copy = ui_handle.clone();
+                slint::invoke_from_event_loop(move || {
+                    handle_copy.unwrap().set_start_status(false);
+                });
             });
+        }
+    });
+    
+    let abort_clone = abort.clone(); 
+    ui.on_stop_clicked({
+        move || {
+            println!("STOP");
+            *abort_clone.lock().unwrap() = 1;
+            println!("{:}", abort_clone.lock().unwrap());
         }
     });
     
