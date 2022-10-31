@@ -6,7 +6,7 @@ use plotters::prelude::*;
 use slint::SharedPixelBuffer;
 
 slint::slint! {
-    import { MainWindow } from "src/Thread3.slint";
+    import { MainWindow } from "src/Thread2.slint";
 }
 
 static _N: i64 = 1000;
@@ -71,7 +71,7 @@ pub fn main() {
                 // ... Do some computation in the thread
                 for _ in 0..100 {
                     if *abort_clone.lock().unwrap() == 0 {
-                        thread::sleep(time::Duration::from_millis(100));
+                        thread::sleep(time::Duration::from_millis(1));
                         // now forward the data to the main thread using invoke_from_event_loop
                         let handle_copy = ui_handle.clone();
                         slint::invoke_from_event_loop(move || {
@@ -81,6 +81,7 @@ pub fn main() {
                     }
                     else {
                         println!("out");
+                        *abort_clone.lock().unwrap() = 0;
                         break;
                     };
                 };
