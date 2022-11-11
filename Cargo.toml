@@ -9,6 +9,7 @@ edition = "2021"
 slint = "0.3.0" 
 rand = "0.8.5"
 plotters = { version = "^0.3.0", default-features = true }
+tokio = { version = "1.21.2", features = ["full"] }
 
 [build-dependencies]
 slint-build = "0.3.0"
