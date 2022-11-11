@@ -25,7 +25,7 @@ export Button := Rectangle {
 }
 
 export MainWindow := Window {
-    title: "Slint threading template";
+    title: "Slint mulit-threading example";
     preferred-width: 1000px;
     preferred-height: 800px;
     
@@ -39,7 +39,7 @@ export MainWindow := Window {
     VerticalBox {
         Text {
             font-size: 20px;
-            text: "Test Threading";
+            text: "Signal vs Time";
             horizontal-alignment: center;
         }
         
@@ -59,7 +59,7 @@ export MainWindow := Window {
         
         HorizontalBox {
             Button {
-                text: "START";
+                text: "RUN";
                 height: 50px;
                 background: green;
                 enabled: start_status;
@@ -68,7 +68,7 @@ export MainWindow := Window {
                 }
             }
            Button {
-                text: "STOP";
+                text: "ABORT";
                 height: 50px;
                 background: red;
                 enabled: false;
