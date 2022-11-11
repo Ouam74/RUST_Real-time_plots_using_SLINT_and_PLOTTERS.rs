@@ -6,7 +6,7 @@ export Button := Rectangle {
     property text <=> txt.text;
     property <bool> enabled <=> touch-area.enabled;
     callback clicked <=> touch.clicked;
-    border-radius: height / 2;
+    // border-radius: height / 2;
     border-width: 1px;
     border-color: background.darker(25%);
     background: touch.pressed ? #6b8282 : touch.has-hover ? #6c616c :  #456;
@@ -26,19 +26,20 @@ export Button := Rectangle {
 
 export MainWindow := Window {
     title: "Slint threading template";
-    preferred-width: 800px;
-    preferred-height: 600px;
+    preferred-width: 1000px;
+    preferred-height: 800px;
     
     callback start_clicked();
     callback stop_clicked();
     property <image> new_image;
     property <bool> start_status;
-    //property <bool> stop_status;
+    property <brush> current_color;
+    property <string> current_string: "";
     
     VerticalBox {
         Text {
             font-size: 20px;
-            text: " Test Threading";
+            text: "Test Threading";
             horizontal-alignment: center;
         }
         
@@ -74,6 +75,15 @@ export MainWindow := Window {
                 clicked => {
                    stop_clicked();
                 }
+            }
+            Button {
+                text: current_string;
+                height: 50px;
+                background: current_color;
+                enabled: false;
+                //clicked => {
+                //   stop_clicked();
+                //}
             }
         }
     }
