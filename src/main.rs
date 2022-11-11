@@ -77,7 +77,6 @@ pub fn main() {
                         });
                     }
                     else {
-                        // *abort_clone.lock().unwrap() = 0;
                         // println!("abort_clone (thread1) = {}", abort_clone.lock().unwrap());
                         break;
                     };
