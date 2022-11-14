@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 use std::{thread, time};
 use std::sync::mpsc::{self, channel, sync_channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
