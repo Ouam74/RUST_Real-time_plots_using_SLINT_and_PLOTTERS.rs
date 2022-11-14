@@ -62,12 +62,9 @@ pub fn main() {
     let abort = Arc::new(Mutex::new(0));
     let (tx, rx) = mpsc::sync_channel(0);
     
-    let ui_handle_clone = ui_handle.clone();
     let abort_clone = abort.clone(); 
     ui.on_start_clicked({
         move || {
-            let ui = ui_handle.unwrap();
-            let ui_handle = ui.as_weak();
             let tx = tx.clone();
 
             let abort_clone = abort.clone(); 
@@ -79,20 +76,21 @@ pub fn main() {
                 loop {
                     if *abort_clone.lock().unwrap() == 0 {
                         let newserie = createserie_iter();
-                        thread::sleep(time::Duration::from_millis(10));
+                        thread::sleep(time::Duration::from_millis(1));
                         tx.send(newserie).unwrap();
                     }
                     else {
                         break;
                     };
                 };
-                let handle_copy = ui_handle.clone();
+                let handle_copy = ui_handle_clone.clone();
                 slint::invoke_from_event_loop(move || {
                     handle_copy.unwrap().set_start_status(false);
                 });
             });
 
             let abort_clone = abort.clone(); 
+            let ui_handle_clone = ui_handle.clone();
             let thread2 = std::thread::spawn(move || {
                 loop {
                     if *abort_clone.lock().unwrap() == 0 {
