@@ -6,7 +6,7 @@ export Button := Rectangle {
     property text <=> txt.text;
     property <bool> enabled <=> touch-area.enabled;
     callback clicked <=> touch.clicked;
-    // border-radius: height / 2;
+    border-radius: height / 2;
     border-width: 1px;
     border-color: background.darker(25%);
     background: touch.pressed ? #6b8282 : touch.has-hover ? #6c616c :  #456;
