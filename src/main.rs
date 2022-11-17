@@ -1,283 +1,91 @@
-#![windows_subsystem = "windows"]
-use std::{thread, time};
-use std::sync::mpsc::{self, channel, sync_channel, Receiver, Sender, TryRecvError};
-use std::sync::{Arc, Mutex};
-use rand::Rng;
-use plotters::prelude::*;
-use slint::{RgbaColor, Color, SharedPixelBuffer, Brush, SharedString};
+# Tasks:
+# In Circuit :
+# 1-Get the "SPICE component" --> create a "V-probe" at each port,
+# 2-Create "Mag" and "Phase" plots for each port,
+# 3-Export plots to ".tab" file,
 
-slint::slint! {
-    import { MainWindow } from "src/Thread3.slint";
-}
+# In HFSS,
+# 4- import the ".tab" files into the "Design Datasets..."
+# 5- Import the datasets into the "Excitations" ("Edit Sources...") like : pwl(Port1_T1_ang,Freq)
 
-static _N: i64 = 1000;
+import sys
+import os
+import pyaedt
+from pyaedt import Circuit
+from pyaedt import Hfss
 
-fn createserie_iter() -> Vec<(f64, f64)> {
-    let mut ret = vec![];
-    let mut _rng = rand::thread_rng();
-    for j in 0.._N {
-        ret.push( ( j as f64, _rng.gen::<f64>() ) );
-    }
-    ret
-}
+sys.setrecursionlimit(100_000)
+print(chr(27) + "[2J")
 
+# inputs
+project_name = "D:\\5-Customer_Issues\\Infineon_Muenchen\\15-11-2022\\Q3__Segments_template_PCB_EXP3D_general_Pushed_Olivier.aedt"
+cir_design_name = "1_Circuit_SPICE_LINK_TEST"
+hfss_design_name = "HFSSDesign1"
+comp_to_push_name = "HFSSDesign1_HFSS_Setup_1_Sweep_1_sp"
+comp_to_push_id = -1000
 
-fn render_plot(newserie: Vec<(f64, f64)>) -> slint::Image {
-    let mut pixel_buffer = slint::SharedPixelBuffer::new(800, 480);
-    // let mut pixel_buffer = slint::SharedPixelBuffer::new(1600, 960);
-    let size = (pixel_buffer.width(), pixel_buffer.height());
-    let backend = plotters::backend::BitMapBackend::with_buffer(pixel_buffer.make_mut_bytes(), size);
+# Delete "lock" file
+pyaedt.generic.general_methods.remove_project_lock(project_name)
 
-    // Plotters requires TrueType fonts from the file system to draw axis text - we skip that for WASM for now. 
-    #[cfg(target_arch = "wasm32")]
-    let backend = slint::wasm_backend::BackendWithoutText { backend };
-    
-    let root = backend.into_drawing_area();
+# Open the "Circuit" and "HFSS" sessions
+# cir = pyaedt.Circuit(projectname=project_name, designname=design_name, non_graphical=False, specified_version="2022.2")
+cir = pyaedt.Circuit(designname=cir_design_name, non_graphical=False, specified_version="2022.2")
+h = pyaedt.Hfss(designname=hfss_design_name, non_graphical=False, specified_version="2022.2")
 
-    root.fill(&WHITE).expect("error filling drawing area");
+# Find the working directory
+wd = cir.project_path
 
-    let mut chart = plotters::chart::ChartBuilder::on(&root)
-        .build_cartesian_2d(0.0.._N as f64, 0.0..1.0)
-        .unwrap();
+# Find the "SPICE component" --> create a "V-probe" at each port
+pr = []
+comp_list = cir.modeler.components.components
+for id in comp_list:
+    if comp_to_push_name in cir.modeler.components[id].name:
+        comp_to_push_id = id
+        pr = [None] * len(cir.modeler.components[id].pins)
+        for i in range(len(pr)):
+            print(i)
+            pr[i] = cir.modeler.components.components_catalog["Probes:VPROBE"].place("bla" + str(i))
+            pr[i].parameters["Name"] = cir.modeler.components[id].pins[i].name
+            pr[i].pins[0].connect_to_component(cir.modeler.components[id].pins[i])
+        break
 
-    chart.configure_mesh().draw().unwrap();
+# Simulate the project
+cir.analyze_setup("NexximTransient")
 
-    // chart.draw_series(plotters::series::LineSeries::new(createserie_iter(), &RED).point_size(0))
-    //      .expect("error drawing series");
+# # Create the "mag" and "angle" spectral reports and save them as ".tab" files
+for i in range(len(pr)):
+# for i in range(4):
+    # Create plots and save data to a file
+    new_report = cir.post.reports_by_category.spectral("mag(V(Port%d_T1))" %(i+1))
+    new_report.window = "Hanning"
+    new_report.max_frequency = "100MHz"
+    new_report.time_stop = "10us"
+    new_report.create()
+    new_report.edit_x_axis_scaling(units='Hz')
+    cir.post.rename_report(new_report.plot_name, "Port%d_T1_mag" %(i+1))
+    cir.post.export_report_to_file(wd, "Port%d_T1_mag" %(i+1), ".tab")
 
-    chart.draw_series(plotters::series::LineSeries::new(newserie, &RED).point_size(0))
-    .expect("error drawing series");
+    new_report = cir.post.reports_by_category.spectral("ang_rad(V(Port%d_T1))" %(i+1))
+    new_report.window = "Hanning"
+    new_report.max_frequency = "100MHz"
+    new_report.time_stop = "10us"
+    new_report.create()
+    new_report.edit_x_axis_scaling(units='Hz')
+    new_report.edit_x_axis_scaling(linear_scaling=False)
+    cir.post.rename_report(new_report.plot_name, "Port%d_T1_ang" %(i+1))
+    cir.post.export_report_to_file(wd, "Port%d_T1_ang" %(i+1), ".tab")
 
-    root.present().expect("error presenting");
-    drop(chart);
-    drop(root);
+cir.save_project()
 
-    slint::Image::from_rgb8(pixel_buffer)
-}
+# Get ".tab" file list
+for file in os.listdir(wd):
+    if file.endswith(".tab"):
+        file = os.path.join(wd, file)
+        name = os.path.splitext(os.path.basename(file))[0]
+        h.import_dataset1d(file, dsname=name, is_project_dataset=False)
 
+for i in range(len(pr)):
+    h.edit_source(portandmode="Port%d_T1" %(i+1), powerin="pwl(Port%d_T1_mag,Freq)" %(i+1), phase="pwl(Port1_T1_ang,Freq)")
 
-pub fn main() {
-    
-    let ui = MainWindow::new();
-    let ui_handle = ui.as_weak();
-    let abort = Arc::new(Mutex::new(0));
-    let (tx, rx) = mpsc::sync_channel(0);
-    
-    let abort_clone = abort.clone(); 
-    ui.on_start_clicked({
-        move || {
-            let tx = tx.clone();
-
-            let abort_clone = abort.clone(); 
-            *abort_clone.lock().unwrap() = 0;
-            
-            let ui_handle_clone = ui_handle.clone(); 
-            let abort_clone = abort.clone(); 
-            let thread1 = std::thread::spawn(move || {
-                loop {
-                    if *abort_clone.lock().unwrap() == 0 {
-                        let newserie = createserie_iter();
-                        thread::sleep(time::Duration::from_millis(1));
-                        tx.send(newserie).unwrap();
-                    }
-                    else {
-                        break;
-                    };
-                };
-                let handle_copy = ui_handle_clone.clone();
-                slint::invoke_from_event_loop(move || {
-                    handle_copy.unwrap().set_start_status(false);
-                });
-            });
-
-            let abort_clone = abort.clone(); 
-            let ui_handle_clone = ui_handle.clone();
-            let thread2 = std::thread::spawn(move || {
-                loop {
-                    if *abort_clone.lock().unwrap() == 0 {
-                            thread::sleep(time::Duration::from_millis(500));
-                            let handle_copy = ui_handle_clone.clone();
-                            slint::invoke_from_event_loop(move || {
-                                handle_copy.unwrap().set_current_color(Brush::SolidColor(Color::from(RgbaColor{ red: 0.0, green: 0.0, blue: 1.0, alpha: 1.})));
-                                handle_copy.unwrap().set_current_string(SharedString::from("RUNNING"));
-                            });
-                    }
-                    if *abort_clone.lock().unwrap() == 0 {
-                        thread::sleep(time::Duration::from_millis(500));
-                        let handle_copy = ui_handle_clone.clone();
-                        slint::invoke_from_event_loop(move || {
-                            handle_copy.unwrap().set_current_color(Brush::SolidColor(Color::from(RgbaColor{ red: 1.0, green: 0.5, blue: 0.0, alpha: 1.})));
-                            handle_copy.unwrap().set_current_string(SharedString::from("RUNNING"));
-                        });
-                    }   
-                    else {
-                        let handle_copy = ui_handle_clone.clone();
-                        slint::invoke_from_event_loop(move || {
-                            handle_copy.unwrap().set_current_color(Brush::SolidColor(Color::from(RgbaColor{ red: 0.0, green: 0.0, blue: 0.0, alpha: 0.0})));
-                            handle_copy.unwrap().set_current_string(SharedString::from("       "));
-                        });
-                        break;
-                    };
-                }
-            });
-        }
-    });
-    
-    let ui_handle = ui.as_weak();
-    std::thread::spawn(move || {
-        for received in rx {
-            let handle_copy = ui_handle.clone();
-            slint::invoke_from_event_loop(move || {
-                handle_copy.unwrap().set_new_image(render_plot(received));
-            });
-        };
-    });
-    
-    let abort_clone = abort_clone.clone(); // let abort_clone = Arc::clone(&abort_clone);
-    ui.on_stop_clicked({
-        move || {
-            *abort_clone.lock().unwrap() = 1;
-        }
-    });
-    
-    ui.run();
-}
-
-
-// use std::{thread, time};
-// use std::sync::{Arc, Mutex};
-// use rand::Rng;
-// use plotters::prelude::*;
-// use slint::{Image, RgbaColor, Color, SharedPixelBuffer, Brush, SharedString};
-
-
-// slint::slint! {
-//     import { MainWindow } from "src/Thread3.slint";
-// }
-
-// static _N: i64 = 1000;
-
-// fn createserie_iter() -> Vec<(f64, f64)> {
-//     let mut ret = vec![];
-//     let mut _rng = rand::thread_rng();
-//     for j in 0.._N {
-//         ret.push( ( j as f64, _rng.gen::<f64>() ) );
-//     }
-//     ret
-// }
-
-// fn render_plot(newserie: Vec<(f64, f64)>) -> Image {
-//     let mut pixel_buffer = SharedPixelBuffer::new(800, 480);
-//     let size = (pixel_buffer.width(), pixel_buffer.height());
-//     let backend = plotters::backend::BitMapBackend::with_buffer(pixel_buffer.make_mut_bytes(), size);
-
-//     // Plotters requires TrueType fonts from the file system to draw axis text - we skip that for WASM for now. 
-//     #[cfg(target_arch = "wasm32")]
-//     let backend = slint::wasm_backend::BackendWithoutText { backend };
-    
-//     let root = backend.into_drawing_area();
-
-//     root.fill(&WHITE).expect("error filling drawing area");
-
-//     let mut chart = plotters::chart::ChartBuilder::on(&root)
-//         .build_cartesian_2d(0.0.._N as f64, 0.0..1.0)
-//         .unwrap();
-
-//     chart.configure_mesh().draw().unwrap();
-
-//     chart.draw_series(plotters::series::LineSeries::new(newserie, &RED).point_size(0))
-//     .expect("error drawing series");
-
-//     root.present().expect("error presenting");
-//     drop(chart);
-//     drop(root);
-
-//     Image::from_rgb8(pixel_buffer)
-// }
-
-
-// pub fn main() {
-    
-//     let ui = MainWindow::new();
-//     let ui_handle = ui.as_weak();
-//     let abort = Arc::new(Mutex::new(0));
-    
-//     let ui_handle_clone = ui_handle.clone();
-//     let abort_clone = abort.clone(); 
-//     ui.on_start_clicked({
-//         move || {
-//             *abort.lock().unwrap() = 0;
-
-//             let ui_handle_clone = ui_handle.clone(); 
-//             let abort_clone = abort.clone(); 
-//             let thread1 = std::thread::spawn(move || {
-//                 loop {
-//                     let newserie = createserie_iter();
-//                     thread::sleep(time::Duration::from_millis(1));
-//                     if *abort_clone.lock().unwrap() == 0 {
-//                         let handle_copy = ui_handle_clone.clone();
-//                         slint::invoke_from_event_loop(move || {
-//                             handle_copy.unwrap().set_start_status(true);
-//                             handle_copy.unwrap().set_new_image(render_plot(newserie));
-//                         });
-//                     }
-//                     else {
-//                         // println!("abort_clone (thread1) = {}", abort_clone.lock().unwrap());
-//                         break;
-//                     };
-//                 };
-//                 let handle_copy = ui_handle_clone.clone();
-//                 slint::invoke_from_event_loop(move || {
-//                     handle_copy.unwrap().set_start_status(false);
-//                 });
-//             });
-            
-//             let ui_handle_clone = ui_handle.clone();
-//             let abort_clone = abort.clone();  
-//             let thread2 = std::thread::spawn(move || {
-//                 loop {
-//                     if *abort_clone.lock().unwrap() == 0 {
-//                             let handle_copy = ui_handle_clone.clone();
-//                             thread::sleep(time::Duration::from_millis(500));
-//                             slint::invoke_from_event_loop(move || {
-//                                 handle_copy.unwrap().set_current_color(Brush::SolidColor(Color::from(RgbaColor{ red: 0.0, green: 0.0, blue: 1.0, alpha: 1.})));
-//                                 handle_copy.unwrap().set_current_string(SharedString::from("RUNNING"));
-//                             });
-//                     }
-//                     if *abort_clone.lock().unwrap() == 0 {
-//                         let handle_copy = ui_handle_clone.clone();
-//                         thread::sleep(time::Duration::from_millis(500));
-//                         slint::invoke_from_event_loop(move || {
-//                             handle_copy.unwrap().set_current_color(Brush::SolidColor(Color::from(RgbaColor{ red: 1.0, green: 0.5, blue: 0.0, alpha: 1.})));
-//                             handle_copy.unwrap().set_current_string(SharedString::from("RUNNING"));
-//                         });
-//                     }   
-//                     else {
-//                         // println!("abort_clone (thread2) = {}", abort_clone.lock().unwrap());
-//                         break;
-//                     };
-//                 }
-//                 let handle_copy = ui_handle_clone.clone();
-//                 slint::invoke_from_event_loop(move || {
-//                     handle_copy.unwrap().set_current_color(Brush::SolidColor(Color::from(RgbaColor{ red: 0.0, green: 0.0, blue: 0.0, alpha: 0.0})));
-//                     handle_copy.unwrap().set_current_string(SharedString::from("       "));
-//                 });
-//             });
-
-//             // thread1.join().unwrap();
-//             // thread2.join().unwrap();
-
-//         }
-//     });
-    
-//     let abort_clone = abort_clone.clone(); // let abort_clone = Arc::clone(&abort_clone);
-//     ui.on_stop_clicked({
-//         move || {
-//             *abort_clone.lock().unwrap() = 1;
-//             // println!("abort_clone = {}", abort_clone.lock().unwrap());
-//         }
-//     });
-    
-//     ui.run();
-// }
-
+h.analyze_setup("Setup1")
+# h.save_project()
